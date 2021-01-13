@@ -15,7 +15,7 @@
 --
 --   Other mods should depend on this one, and all mods 
 --   Should only include function calls defined by this 
---   mod. These are:
+--   mod. Notable ones are:
 --
 --   trifle.add_set(name_of_set, icon_texture_name)
 --

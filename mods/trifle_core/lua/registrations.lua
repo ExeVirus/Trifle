@@ -51,3 +51,15 @@ minetest.register_node("trifle_core:hint", {
 	use_texture_alpha = true,
 	tiles = {"hint.png"},
 })
+
+--Edit tool
+minetest.register_item("trifle_core:editor", {
+		type = "none",
+		wield_image = "transparent.png",
+		range = 50,
+		tool_capabilities = {
+			full_punch_interval=1,
+			max_drop_level=1,
+			groupcaps={	trifle_node={maxlevel=1, uses=0, times={[1]=2}} }
+    }
+})

@@ -1,7 +1,7 @@
 --------- GUI ------------
 
 --Main formspec for game
-function trifle.main_formspec()
+function trifle.main_menu()
 	local r = {
         "formspec_version[3]",
         "size[9,11.5]",

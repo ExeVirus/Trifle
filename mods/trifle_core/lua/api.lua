@@ -1,4 +1,4 @@
------API-----
+-----External Focused API-----
 
 function trifle.add_set(name_of_set, icon_texture_name)
 	if not trifle.levels.name_of_set then

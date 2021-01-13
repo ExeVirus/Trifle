@@ -52,7 +52,7 @@ function trifle.onRecieveFields(player, formname, fields)
         return
     end
 	local setname = trifle.levels[trifle.levels.num]
-	trifle.load_level(trifle.levels[setname][2].level.map)
+	trifle.load_level(trifle.levels[setname][1].level.map)
 end
 
 minetest.register_on_player_receive_fields(function(player, formname, fields) trifle.onRecieveFields(player, formname, fields) end)
@@ -79,17 +79,11 @@ trifle.current_level = {}
 --								+ => life node
 --					          	# => enemy node
 --								0 => structure node
---								* => hint node
---		events= {
---					{action="play_sound", sound="start", volume=val},
---					{action="alert", text="Game has Begun!"},
---					{action="spawn", delay=3.5, map={ map_def }}, map_def is the same information 
---			    }   											as the first four parts of a level_def
---              There are many other actions not documented here, see "parse_action(action_def)"
+--								* => hint node				
 --
 --		do_life = function(),  Implement your own rulesets for the level!
 --
---		victory = "survive","get_to","destroy","population","custom"
+--		victory = "survive","get_to","destroy","population","custom",
 --
 --		    Each of the options for victory represent different win conditions, 
 --		    and have variables that must be set inside the level def when used. For example, for "survive",
@@ -105,8 +99,29 @@ trifle.current_level = {}
 --			"population" -- Player must have at least pop number of life by the end of round number
 --				round  = <integer>
 --				pop    = <integer>
---      
+--			"custom"	 -- You must define your own victory condition function called victory_function(), which is called at the end every round
+--				victory_function=function(round_num)
+--      failure = <integer>, --If your life drops below the integer value then you lose, if not set, the check is not performed: i.e. failure=nil
 --		
+--      pause_mode = "none","limited","toggle_increment","toggle_only","increment_only" --by default, the player may run a round with spacebar and toggle run/stop with "e" (toggle_increment)
+--			none: 		 	  each round happens after round_time (see below)
+--			toggle_only: 	  player may toggle run/stop with the "aux" ('e') button
+--			increment_only:   player may increment the round num with "spacebar"
+--			toggle_increment: player may both toggle and increment
+--			limited: 		  player has limited number of pauses (toggles * 2)
+--		pause_limit = <integer> --see "limited" pause_mode
+--      round_time = <float> --in seconds, how low a round lasts in "run" mode
+--
+--		events= {                                              
+--					{action="play_sound", sound="start", volume=val},
+--					{action="alert", text="Game has Begun!"},
+--					{action="spawn", delay=3.5, map={ map_def }}, map_def is the same information 
+--			    }   											as the first four parts of a level_def
+--              Actions will occur in the order they appear, one immediately after another, unless
+--				either a delay=<float> value is set or round=<integer> value is set. These specify when
+--				the next action should occur. delay is always since last action completed, and round will
+--				be satisfied anytime current_round > round.
+--				Learn more about actions and how to register your own towards the end of this file
 --	}
 ----------------------------------------------------------
 function trifle.load_level(level_def)
@@ -114,7 +129,10 @@ function trifle.load_level(level_def)
 	trifle.current_level = trifle.parse_map(level_def)
 	if not level_def.do_life then
 		trifle.current_level.do_life = trifle.do_life
+	else
+		trifle.current_level.do_life = level_def.do_life
 	end
+	
 	trifle.clear_map()
 	trifle.write_map(trifle.current_level)
 end
@@ -160,6 +178,10 @@ function trifle.parse_map(map_def)
 					ret.data[i][j] = 0
 				else
 					minetest.log("warning", "Level data has undefined characters!")
+				end
+				ret.data[i][j] = 10^math.random(0, 3)
+				if math.random(0, 1) == 1 then
+					ret.data[i][j] = 0
 				end
 			end
 		end
@@ -220,31 +242,28 @@ end
 -- trifle.do_life()
 --
 -- Reads the current level and performs the game of life "round"
--- overwrite this function to create your own rulesets, or be
+-- overwrite this function to change the default ruleset, though
+-- the reccomended method is to change this function on a per-level
+-- basis
 -------------------------------------------------------------
 function trifle.do_life()
 	local level    = trifle.current_level
 	local new_data = copy(trifle.current_level.data,nil)
-	local count = 0
 	for i=1, level.size_x, 1 do
 		for j=1, level.size_y, 1 do
-			count = 0
-			if (level.data[i-1][j-1] == 1) then count = count + 1 end
-			if (level.data[i]  [j-1] == 1) then count = count + 1 end
-			if (level.data[i+1][j-1] == 1) then count = count + 1 end
-			if (level.data[i-1][j]   == 1) then count = count + 1 end
-			if (level.data[i+1][j]   == 1) then count = count + 1 end
-			if (level.data[i-1][j+1] == 1) then count = count + 1 end
-			if (level.data[i]  [j+1] == 1) then count = count + 1 end
-			if (level.data[i+1][j+1] == 1) then count = count + 1 end
+			local count = (level.data[i-1][j-1] + level.data[i][j-1] +	level.data[i+1][j-1] +
+				level.data[i-1][j] + level.data[i+1][j] + level.data[i-1][j+1] +
+				level.data[i][j+1] + level.data[i+1][j+1])
+			
+			local life = (count % 10)
 			if level.data[i][j] == 1 then
-				if count == 2 or count == 3 then
+				if life == 2 or life == 3 then
 					new_data[i][j] = 1
 				else
 					new_data[i][j] = 0
 				end
 			elseif level.data[i][j] == 0 then
-				if count == 3 then
+				if life == 3 then
 					new_data[i][j] = 1
 				end
 			end
@@ -253,6 +272,7 @@ function trifle.do_life()
 	trifle.current_level.data = new_data
 	trifle.write_map(trifle.current_level)
 end
+
 
 local timer = 0
 local tick  = 0

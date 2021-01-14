@@ -38,26 +38,6 @@ end
 
 minetest.register_on_joinplayer(function(player_ref,_) trifle.onJoinPlayer(player_ref,_) end)
 
-----------------------------------------------------------
---
--- trifle.onRecieveFields(player, formname, fields)
---
--- player: player object 
--- formname: use provided form name
--- fields: standard recieve fields
--- Callback for on_recieve fields
-----------------------------------------------------------
-function trifle.onRecieveFields(player, formname, fields)
-    if formname ~= "trifle_core:main_menu" then
-        return
-    end
-    local setname = trifle.levels[trifle.levels.num]
-    trifle.load_level(setname, 1)
-end
-
-minetest.register_on_player_receive_fields(function(player, formname, fields) trifle.onRecieveFields(player, formname, fields) end)
-
-
 trifle.current_level = {}
 
 
@@ -127,19 +107,20 @@ trifle.current_level = {}
 ----------------------------------------------------------
 function trifle.load_level(setname, level_number)
     local new_level = trifle.levels[setname][level_number].level
-    trifle.current_level = trifle.parse_map(new_level.map)
+    trifle.current_level = trifle.parse_map(new_level)
     
     --Parse the rest of the level settings
     --do_life function override
-    if not new_level.do_life then
-        trifle.current_level.do_life = trifle.do_life
-    else
-        trifle.current_level.do_life = new_level.do_life
-    end
+    if new_level.do_life == nil then trifle.current_level.do_life = trifle.do_life else
+	trifle.current_level.do_life = new_level.do_life end
     
-    trifle.paused = new_level.start_paused
-    if not trifle.paused then trifle.paused = true end -- default true
     
+    if new_level.start_paused == nil then trifle.paused = true else -- default true
+    trifle.paused = new_level.start_paused end
+
+	if new_level.round_time == nil then trifle.current_level.round_time = 0.5 else -- default true
+	trifle.current_level.round_time = new_level.round_time end
+	
     --Default starting values:
     trifle.current_level.setname          = setname
     trifle.current_level.level_number     = level_number
@@ -153,11 +134,11 @@ end
 
 ----------------------------------------------------------
 --
--- trifle.parse_map(map_def)
+-- trifle.parse_map(level_def)
 --
--- Parses map_def and returns the resulting table, see 
+-- Parses level_def and returns the resulting table, see 
 -- trifle.load_level(level_def) for more information
--- see trifle.load_level()'s map defition
+-- see trifle.load_level()
 --
 --
 -- Note that, internally, each different node type
@@ -167,11 +148,11 @@ end
 -- we can just take the sum and essential count the number of that
 -- node nearby. This is a performance optimization. 
 ----------------------------------------------------------
-function trifle.parse_map(map_def)
+function trifle.parse_map(level_def)
     local ret = {}
-    ret.size_x = map_def.size_x
-    ret.size_y = map_def.size_y
-    ret.pos    = map_def.pos
+    ret.size_x = level_def.size_x
+    ret.size_y = level_def.size_y
+    ret.pos    = level_def.pos
     ret.data   = {}
     for i=0,ret.size_x+1,1 do
         ret.data[i] = {}
@@ -179,7 +160,7 @@ function trifle.parse_map(map_def)
             if i == 0 or j == 0 or i == ret.size_x+1 or j == ret.size_y+1 then --zero around the edges of map
                 ret.data[i][j] = 0
             else
-                local tile = string.sub(map_def.data[j],i,i)
+                local tile = string.sub(level_def.data[j],i,i)
                 if tile == "+" then --life
                     ret.data[i][j] = 1
                 elseif tile == "#"  then --enemy
@@ -192,10 +173,6 @@ function trifle.parse_map(map_def)
                     ret.data[i][j] = 0
                 else
                     minetest.log("warning", "Level data has undefined characters!")
-                end
-                ret.data[i][j] = 10^math.random(0, 3)
-                if math.random(0, 1) == 1 then
-                    ret.data[i][j] = 0
                 end
             end
         end
@@ -273,16 +250,33 @@ function trifle.do_life()
                 level.data[i-1][j] + level.data[i+1][j] + level.data[i-1][j+1] +
                 level.data[i][j+1] + level.data[i+1][j+1])
             
-            local life = (count % 10)
+            local life   = (count % 10)
+			local enemy  = math.floor((count / 10)  % 10)
+			local struct = math.floor((count / 100) % 10)
+			
             if level.data[i][j] == 1 then
-                if life == 2 or life == 3 then
+                if enemy > 0 then
+					new_data[i][j] = 0
+				elseif life == 2 or life == 3 then
                     new_data[i][j] = 1
                 else
                     new_data[i][j] = 0
                 end
-            elseif level.data[i][j] == 0 then
-                if life == 3 then
-                    new_data[i][j] = 1
+			elseif level.data[i][j] == 10 then
+				if life > 0 then
+					new_data[i][j] = 0
+				elseif enemy == 2 or enemy == 3 then
+					new_data[i][j] = 10
+				else
+					new_data[i][j] = 0
+				end
+            elseif level.data[i][j] == 0 or level.data[i][j] == 1000 then --hints are also empty
+                if life + enemy == 3 then
+					if life > enemy then
+						new_data[i][j] = 1
+					else
+						new_data[i][j] = 10
+					end
                 end
             end
         end
@@ -369,31 +363,38 @@ end
 -- it is also set to false during level quit/shutdown.
 -------------------------------------------------------------
 local timer = 0
-local tick  = 0
 local down = {}
 down.jump = false
-trifle.loaded = false --
+down.aux1 = false
+trifle.loaded = false -- used by main_menu and trifle.quit()
 trifle.paused = true
 function trifle.globalstep(dtime)
-    if not trifle.loaded then return end --NO globalstep stuff when we're in the main menu
+    if not trifle.loaded then return end --No globalstep stuff when we're in the main menu
     
-    timer = timer + dtime
-    if timer < 0.01 then return end --20 fps
-    tick = tick + timer
-    timer = dtime
+	timer = dtime + timer
     --assume single player for now
     local player = minetest.get_player_by_name("singleplayer")
     if player then
         local controls = player:get_player_control()
         if controls.jump and not down.jump then
             down.jump = true
-            trifle.paused = not trifle.paused
+			trifle.current_level.do_life()
         elseif not controls.jump then
             down.jump = false
         end
+		if controls.aux1 and not down.aux1 then
+			down.aux1 = true
+			if not trifle.paused then 
+				trifle.pause()
+			else	
+				trifle.unpause()
+			end
+		elseif not controls.aux1 then
+			down.aux1 = false
+		end
     end
-    if tick < 2 then return end --twice a second
-    tick = timer
+    if timer < trifle.current_level.round_time then return end --twice a second
+    timer = dtime
     if not trifle.paused then 
         trifle.do_life()
     end    
@@ -409,6 +410,9 @@ minetest.register_globalstep(function(dtime) trifle.globalstep(dtime) end)
 -- Simply pauses any do_life occurances
 -- 
 -------------------------------------------------------------
+function trifle.pause()
+	trifle.paused = true
+end
 
 -------------------------------------------------------------
 --
@@ -416,9 +420,13 @@ minetest.register_globalstep(function(dtime) trifle.globalstep(dtime) end)
 --
 -- Unpauses do_life occurances (see trifle.globalstep())
 -- Also will reset the counter for the current round so that
--- the full round time will occur before the next round happens.
+-- the full round time will occur before the next round increments
 -- 
 -------------------------------------------------------------
+function trifle.unpause()
+	trifle.paused = false
+	timer = 0
+end
 
 -------------------------------------------------------------
 --

@@ -20,3 +20,22 @@ function trifle.main_menu()
     }
 	return table.concat(r);
 end
+
+----------------------------------------------------------
+--
+-- trifle.onRecieveFields(player, formname, fields)
+--
+-- player: player object 
+-- formname: use provided form name
+-- fields: standard recieve fields
+-- Callback for on_recieve fields
+----------------------------------------------------------
+function trifle.onRecieveFields(player, formname, fields)
+    if formname ~= "trifle_core:main_menu" then
+        return
+    end
+    local setname = trifle.levels[trifle.levels.num]
+    trifle.load_level(setname, 1)
+end
+
+minetest.register_on_player_receive_fields(function(player, formname, fields) trifle.onRecieveFields(player, formname, fields) end)

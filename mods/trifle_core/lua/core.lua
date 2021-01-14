@@ -33,6 +33,7 @@ function trifle.onJoinPlayer(player_ref, _)
         new_move = true,        
     })
     player_ref:set_pos({x=0,y=5,z=0})
+    trifle.clear_map()
     minetest.show_formspec(player_ref:get_player_name(), "trifle_core:main_menu", trifle.main_menu())
 end
 
@@ -63,70 +64,122 @@ trifle.current_level = {}
 --
 --        do_life = function(),  Implement your own rulesets for the level!
 --
---        victory = "survive","get_to","destroy","population","custom",
+--        victory = "survive","get_to","destroy","population","custom"
 --
 --            Each of the options for victory represent different win conditions, 
 --            and have variables that must be set inside the level def when used. For example, for "survive",
---            you must have: victory="survive", and a variable: round=<integer>. See below for the key:
+--            you must have: victory="survive", and a variable: round=<integer>. To get a better understanding of 
+--            what victory is, see each victory's default victory function. survive's is trifle.survive_victory_function()
+--            See below for the key:
 --    
 --            "survive"    -- Survive through round number
---                round=<integer>
+--                final_round=<integer>
 --            "get_to"     -- Player must have a "life" node on point or points before the end of round number    
---                points = { {x,y,z}, {x,y,z} , ... } at least one, as many as you want
---                round  = <integer>
+--                get_to_points = { {x,z}, {x,z} , ... } at least one, as many as you want
+--                final_round  = <integer>
 --            "destroy"    -- Player must defeat all enemy by round number
---                round  = <integer>
+--                final_round  = <integer>
 --            "population" -- Player must have at least pop number of life by the end of round number
---                round  = <integer>
+--                final_round  = <integer>
 --                pop    = <integer>
 --            "custom"     -- You must define your own victory condition function called victory_function(), which is called at the end every round
---                victory_function=function(round_num)
---      failure = <integer>, --If your life drops below the integer value then you lose, if not set, the check is not performed: i.e. failure=nil
+--                custom_victory = function()
+--                custom_vars = {} custom vars can be a user defined table of variables or a single variable, whatever you need. It'll be stored
+--                                 inside trifle.current_level.custom_vars
+--       failure = "life_limit", "enemy_limit", "enemy_get_to" --Note that custom is not included here, please use the victory function for custom failure modes
+--                Very similar to victory, there are three possible built-in failure modes. If you want a custom failure mode, work it into the victory function.
+--            "life_limit" -- minimum number of lives you can have at any point
+--               life_limit = <integer>
+--            "enemy_limit" -- maximum number of lives the enemy can have at any point
+--               enemy_limit = <integer>
+--            "enemy_get_to" -- you lose if there is an enemy on any position specified in enemy_points
+--               enemy_points = { {x,z},{x,z} , ... } at least one, as many as you want
+--            "custom"-- You must define your own failure condition function called failure_function(), which is called at the end every round, *after* the victory_function
+--               ---custom vars is the same variable used here as victory_function's custom, so share:)
+--
+--      do_victory = function(),  Implement your own formspec and sounds and stuff for showing the user victory! 
+--              --note both do_vicotry and do_failure are found in gui.lua. Not this file
+--      do_failure = function(),  Implement your own formspec and sounds and stuff for showing the user defeat!
 --        
 --      pause_mode = "none","limited","toggle_increment","toggle_only","increment_only" --by default, the player may run a round with spacebar and toggle run/stop with "e" (toggle_increment)
---            none:                each round happens after round_time (see below)
---            toggle_only:       player may toggle run/stop with the "aux" ('e') button
---            increment_only:   player may increment the round num with "spacebar"
+--            none:             each round happens after 'round_time (see below), the player will typically unpause to start the game
 --            toggle_increment: player may both toggle and increment
---            limited:           player has limited number of pauses (toggles * 2)
+--            limited:          player has limited number of pauses, only counts when "pause" happens, not unpause. No incrementing.
+-- 
 --      pause_limit = <integer> --see "limited" pause_mode
 --      start_paused = true/false, default true
 --      round_time = <float> --in seconds, how low a round lasts in "run" mode
 --
---        actions={                                              
---                    action_def1,
---                    action_def2,
---                    etc,
---                }
+--      actions={                                              
+--                  action_def1, --learn more about action_defs in trifle.parse_action() below
+--                  action_def2,
+--                  etc,
+--              }
 --             Actions will occur in the order they appear, one immediately after another, unless
 --             either a delay=<float> value is set or round=<integer> value is set. These specify when
 --             the next action should occur. delay is always since last action completed, and round will
 --             be satisfied anytime current_level.current_round > round.
 --             See trifle.process_actions to learn more (and find action_def)
---    }
+--
+--    } --end of level_def description
 ----------------------------------------------------------
 function trifle.load_level(setname, level_number)
-    local new_level = trifle.levels[setname][level_number].level
-    trifle.current_level = trifle.parse_map(new_level)
-    
-    --Parse the rest of the level settings
-    --do_life function override
-    if new_level.do_life == nil then trifle.current_level.do_life = trifle.do_life else
-	trifle.current_level.do_life = new_level.do_life end
-    
-    
-    if new_level.start_paused == nil then trifle.paused = true else -- default true
-    trifle.paused = new_level.start_paused end
-
-	if new_level.round_time == nil then trifle.current_level.round_time = 0.5 else -- default true
-	trifle.current_level.round_time = new_level.round_time end
-	
     --Default starting values:
     trifle.current_level.setname          = setname
     trifle.current_level.level_number     = level_number
     trifle.current_level.current_action   = 1
     trifle.current_level.last_action_time = 0
     trifle.current_level.current_round    = 1
+    
+    local new_level = trifle.levels[setname][level_number].level
+    
+    --parse the level_def map variables
+    if new_level ~= nil then
+        trifle.current_level = trifle.parse_map(new_level)
+    else trifle.warn_and_quit("No .level specified in level_def.") return end
+    
+    --victory mode
+    if new_level.victory == nil then trifle.warn_and_quit("No .victory specified in level_def.") return end
+    trifle.current_level.victory = new_level.victory
+    if not trifle.set_victory(new_level) then return end
+    
+    --failure mode
+    if new_level.failure ~= nil then 
+        if not trifle.set_failure(level_def) then return false
+    else --not set, so do nothing:
+        trifle.current_level.failure_function = function() return end 
+    end
+    
+    --do_life function override
+    if new_level.do_life == nil then trifle.current_level.do_life = trifle.do_life else
+    trifle.current_level.do_life = new_level.do_life end
+    
+    --do_victory function override
+    if new_level.do_victory == nil then trifle.current_level.do_victory = trifle.do_victory else
+    trifle.current_level.do_victory = new_level.do_victory end
+    
+    --do_failure function override
+    if new_level.do_failure == nil then trifle.current_level.do_failure = trifle.do_failure else
+    trifle.current_level.do_failure = new_level.do_failure end
+    
+    --start paused?
+    if new_level.start_paused == nil then trifle.paused = true else -- default true
+    trifle.paused = new_level.start_paused end
+    
+    --time for each round
+    if new_level.round_time == nil then trifle.current_level.round_time = 0.5 else
+    trifle.current_level.round_time = new_level.round_time end
+    
+    --limited number of pauses
+    if new_level.pause_limit ~= nil then trifle.current_level.pause_limit = new_level.pause_limit end
+    
+    --pause mode
+    if new_level.pause_mode == nil then trifle.current_level.pause_mode = "toggle_increment"
+    else if not trifle.set_pause_mode(new_level.pause_mode) then return false end end
+    
+    --actions table
+    if new_level.actions ~= nil then trifle.current_level.actions = new_level.actions end
+    
     trifle.clear_map()
     trifle.write_map(trifle.current_level)
     trifle.loaded = true --turn on globalstep
@@ -243,40 +296,40 @@ end
 -------------------------------------------------------------
 function trifle.do_life()
     local level    = trifle.current_level
-    local new_data = table.copy(trifle.current_level.data)
+    local new_data = table.copy(level.data)
     for i=1, level.size_x, 1 do
         for j=1, level.size_y, 1 do
-            local count = (level.data[i-1][j-1] + level.data[i][j-1] +    level.data[i+1][j-1] +
+            local count = (level.data[i-1][j-1] + level.data[i][j-1] + level.data[i+1][j-1] +
                 level.data[i-1][j] + level.data[i+1][j] + level.data[i-1][j+1] +
                 level.data[i][j+1] + level.data[i+1][j+1])
             
             local life   = (count % 10)
-			local enemy  = math.floor((count / 10)  % 10)
-			local struct = math.floor((count / 100) % 10)
-			
+            local enemy  = math.floor((count / 10)  % 10)
+            local struct = math.floor((count / 100) % 10)
+            
             if level.data[i][j] == 1 then
                 if enemy > 0 then
-					new_data[i][j] = 0
-				elseif life == 2 or life == 3 then
+                    new_data[i][j] = 0
+                elseif life == 2 or life == 3 then
                     new_data[i][j] = 1
                 else
                     new_data[i][j] = 0
                 end
-			elseif level.data[i][j] == 10 then
-				if life > 0 then
-					new_data[i][j] = 0
-				elseif enemy == 2 or enemy == 3 then
-					new_data[i][j] = 10
-				else
-					new_data[i][j] = 0
-				end
+            elseif level.data[i][j] == 10 then
+                if life > 0 then
+                    new_data[i][j] = 0
+                elseif enemy == 2 or enemy == 3 then
+                    new_data[i][j] = 10
+                else
+                    new_data[i][j] = 0
+                end
             elseif level.data[i][j] == 0 or level.data[i][j] == 1000 then --hints are also empty
                 if life + enemy == 3 then
-					if life > enemy then
-						new_data[i][j] = 1
-					else
-						new_data[i][j] = 10
-					end
+                    if life > enemy then
+                        new_data[i][j] = 1
+                    else
+                        new_data[i][j] = 10
+                    end
                 end
             end
         end
@@ -285,8 +338,9 @@ function trifle.do_life()
     trifle.write_map(trifle.current_level)
     trifle.current_level.current_round = trifle.current_level.current_round + 1
     trifle.process_actions()
+    trifle.current_level.victory_function() --performs win checks (and sometimes a lose check)
+    trifle.current_level.failure_function()
 end
-
 
 -------------------------------------------------------------
 --
@@ -298,7 +352,7 @@ end
 --
 -------------------------------------------------------------
 function trifle.process_actions()
-	if not trifle.current_level.actions then return end --no actions defined
+    if not trifle.current_level.actions then return end --no actions defined
     local action = trifle.current_level.actions[trifle.current_level.current_action]
     if not action then return end --No more actions defined, or no actions defined
     local delay = action.delay * 1000000 --microseconds
@@ -329,8 +383,8 @@ end
 --     action = "action name"    -- list of built-in options: See registrations.lua
 --     delay  = <decimal number> -- in seconds
 --     round  = <integer>        -- 
---     var1 = whatever           --These are custom to each action, see
---                               -- registrations.lua for built-in options
+--     var1   = whatever         --These are custom to each action, see
+--     var2,etc                  --registrations.lua for built-in options
 -- }
 -- Increments the last_action_time once completed
 -------------------------------------------------------------
@@ -338,7 +392,7 @@ function trifle.parse_action(action_def)
     if type(trifle.actions[action_def.action]) ~= "function" then 
         minetest.log("error", "Action Name: " .. action_def.action .. " from (set)"..
             trifle.current_level.setname.."-(level)"..trifle.current_level.level_number..
-            " is not registered as a function")
+            " does not have a valid function!")
         trifle.last_action_time = minetest.get_us_time() --No need to stop working, let's soldier on
         return
     end
@@ -347,6 +401,288 @@ function trifle.parse_action(action_def)
     --reset the last_time counter
     trifle.last_action_time = minetest.get_us_time()
 end
+
+-------------------------------------------------------------
+--
+-- trifle.set_victory(level_def) 
+--
+-- Parses and sets up the victory conditions for the level
+-- returns false on failure and warns the user (and quits)
+-- 
+-------------------------------------------------------------
+function trifle.set_victory(level_def)
+    local v = trifle.current_level.victory
+    if     v == "survive" then
+    
+        --check final_round is valid:
+        if level_def.final_round == nil or type(level_def.final_round) ~= "number" then 
+            trifle.warn_and_quit("level_def.final_round must be set for 'survive' victory type.") return false end
+        trifle.current_level.final_round = level_def.final_round
+        
+        --Set victory function
+        trifle.current_level.victory_function = trifle.survive_victory_function
+        
+    elseif v == "get_to" then
+    
+        --check final_round is valid:
+        if level_def.final_round == nil or type(level_def.final_round) ~= "number" then 
+            trifle.warn_and_quit("level_def.final_round must be set for 'get_to' victory type.") return false end
+        trifle.current_level.final_round = level_def.final_round
+        
+        --check get_to_points is valid:
+        if level_def.get_to_points == nil or type(level_def.get_to_points) ~= "table" then 
+            trifle.warn_and_quit("level_def.get_to_points must be set as a table for 'get_to' victory type.") return false end
+        trifle.current_level.get_to_points = level_def.get_to_points
+
+        --Set victory function
+        trifle.current_level.victory_function = trifle.get_to_victory_function
+        
+    elseif v == "destroy" then
+    
+        --check final_round is valid:
+        if level_def.final_round == nil or type(level_def.final_round) ~= "number" then 
+            trifle.warn_and_quit("level_def.final_round must be set for 'destroy' victory type.") return false end
+        trifle.current_level.final_round = level_def.final_round
+        
+        --Set victory function
+        trifle.current_level.victory_function = trifle.destroy_victory_function
+    
+    elseif v == "population" then
+    
+        --check final_round is valid:
+        if level_def.final_round == nil or type(level_def.final_round) ~= "number" then 
+            trifle.warn_and_quit("level_def.final_round must be set for 'population' victory type.") return false end
+        trifle.current_level.final_round = level_def.final_round
+        
+        --check pop is valid:
+        if level_def.pop == nil or type(level_def.pop) ~= "number" then 
+            trifle.warn_and_quit("level_def.pop must be set for 'population' victory type.") return false end
+        trifle.current_level.pop = level_def.pop
+        
+        --Set victory function
+        trifle.current_level.victory_function = trifle.population_victory_function
+    
+    elseif v == "custom" then
+        --check that custom function is valid
+        if level_def.custom_victory == nil or type(level_def.custom_victory) ~= "function" then 
+            trifle.warn_and_quit("level_def.custom_victory (function) must be set for 'custom' victory type.") return false end
+        trifle.current_level.custom_victory = level_def.custom_victory
+        
+        --check for custom vars
+        if level_def.custom_vars ~= nil then trifle.current_level.custom_vars = level_def.custom_vars end
+        
+        --Set victory function
+        trifle.current_level.victory_function = level_def.custom_victory
+    else --No matches
+        trifle.warn_and_quit("level_def.victory: '"..trifle.current_level.victory.."' is not a recognized type")
+        return false
+    end
+    return true
+end
+
+-------------------------------------------------------------
+--
+-- trifle.survive_victory_function() 
+--
+-- Default victory function for the "survive" level victory type
+-- Checks if there is *any* life (blue) on the board when current_round
+-- is larger than the level_def.round value. For example, to 
+-- check for win or loss on round 5, we would set the 
+-- level_def.round = 5.
+-- 
+-- 
+-------------------------------------------------------------
+function trifle.survive_victory_function()
+
+end
+
+-------------------------------------------------------------
+--
+-- trifle.get_to_victory_function() 
+--
+-- 
+-------------------------------------------------------------
+function trifle.get_to_victory_function()
+
+end
+
+-------------------------------------------------------------
+--
+-- trifle.destroy_victory_function() 
+--
+-- 
+-------------------------------------------------------------
+function trifle.destroy_victory_function()
+
+end
+
+-------------------------------------------------------------
+--
+-- trifle.population_victory_function() 
+--
+-- 
+-------------------------------------------------------------
+function trifle.population_victory_function()
+
+end
+
+-------------------------------------------------------------
+--
+-- trifle.set_failure(level_def) 
+--
+-- Parses and sets up the failure conditions for the level
+-- returns false on failure to setup and warns the user (and quits)
+-- 
+-------------------------------------------------------------
+function trifle.set_failure(level_def)
+    if level_def.failure     == "life_limit" then
+        trifle.current_level.failure = "life_limit"
+    
+        --check life_limit is valid:
+        if level_def.life_limit == nil or type(level_def.life_limit) ~= "number" then 
+            trifle.warn_and_quit("level_def.life_limit must be set for 'life_limit' failure type.") return false end
+        trifle.current_level.life_limit = level_def.life_limit
+        
+        --set failure_function:
+        trifle.current_level.failure_function = trifle.life_limit_failure_function
+        
+    elseif level_def.failure == "enemy_limit" then
+        trifle.current_level.failure = "enemy_limit"
+        
+        --check enemy_limit is valid:
+        if level_def.enemy_limit == nil or type(level_def.enemy_limit) ~= "number" then 
+            trifle.warn_and_quit("level_def.enemy_limit must be set for 'enemy_limit' failure type.") return false end
+        trifle.current_level.enemy_limit = level_def.enemy_limit
+        
+        --set failure_function:
+        trifle.current_level.failure_function = trifle.enemy_limit_failure_function
+        
+    elseif level_def.failure == "enemy_get_to" then
+        trifle.current_level.failure = "enemy_get_to"
+    
+        --check enemy_points is valid:
+        if level_def.enemy_points == nil or type(level_def.enemy_points) ~= "table" then 
+            trifle.warn_and_quit("level_def.enemy_points (table) must be set for 'enemy_get_to' failure type.") return false end
+        trifle.current_level.enemy_points = level_def.enemy_points
+        
+        --set failure_function:
+        trifle.current_level.failure_function = trifle.enemy_points_failure_function
+    elseif level_def.failure == "custom" then
+        trifle.current_level.failure = "custom"
+        
+        --check that custom function is valid
+        if level_def.custom_failure == nil or type(level_def.custom_failure) ~= "function" then 
+            trifle.warn_and_quit("level_def.custom_failure (function) must be set for 'custom' failure type.") return false end
+        trifle.current_level.custom_failure = level_def.custom_failure
+        
+        --check for custom vars
+        if level_def.custom_vars ~= nil then trifle.current_level.custom_vars = level_def.custom_vars end
+        
+        --Set victory function
+        trifle.current_level.failure_function = level_def.custom_failure
+        
+    else
+        trifle.warn_and_quit("level_def.failure: '"..level_def.failure.."' is not a recognized type")
+        return false
+    end
+end
+
+-------------------------------------------------------------
+--
+-- trifle.life_limit_failure_function() 
+--
+-- 
+-------------------------------------------------------------
+function trifle.life_limit_failure_function()
+
+end
+
+-------------------------------------------------------------
+--
+-- trifle.enemy_limit_failure_function() 
+--
+-- 
+-------------------------------------------------------------
+function trifle.enemy_limit_failure_function()
+
+end
+
+-------------------------------------------------------------
+--
+-- trifle.enemy_points_failure_function() 
+--
+-- 
+-------------------------------------------------------------
+function trifle.enemy_points_failure_function()
+
+end
+
+
+-------------------------------------------------------------
+--
+-- trifle.set_pause_mode(mode) 
+--    pause_mode = "none","limited","toggle_increment","toggle_only","increment_only" --by default, the player may run a round with spacebar and toggle run/stop with "e" (toggle_increment)
+--       none:             each round happens after 'round_time (see below), the player will typically unpause to start the game
+--       toggle_increment: player may both toggle and increment
+--       limited:          player has limited number of pauses, only counts when "pause" happens, not unpause. No incrementing.
+-- 
+-------------------------------------------------------------
+function trifle.set_pause_mode(mode)
+    if type(mode) ~= "string" then trifle.warn_and_quit("level_def.pause_mode is not a valid string.") return false end
+    if mode == "none" then
+        trifle.current_level.pause_mode = "none"
+    elseif mode == "toggle_increment" then
+        trifle.current_level.pause_mode = "toggle_increment"
+    elseif mode == "limited" then
+        trifle.current_level.pause_mode = "limited"
+    else
+        trifle.warn_and_quit("level_def.pause_mode: '"..mode.."' is not recognized.")
+    end 
+end
+
+-------------------------------------------------------------
+--
+-- trifle.warn_and_quit(warning)
+--
+-- 1. outputs a warning to minetest's log
+-- 2. Shows a formspec to the user that shows the problem, 
+--     user can choose to go to main menu or the formspec times out after 12 seconds
+-------------------------------------------------------------
+trifle.done_warning = false
+function trifle.warn_and_quit(warning)
+    local warn_string = {
+        "Warning from trifle_core:\n",
+        "In set-'"..trifle.current_level.setname.."', level-'"..trifle.current_level.level_number.."':\n",
+        warning,
+    }
+    minetest.log("warning", table.concat(warn_string))
+    local formspec = {
+        "",
+        table.concat(warn_string),
+    }
+    trifle.done_warning = false
+    minetest.show_formspec("singleplayer", "trifle_core:warning_page", table.concat(formspec))
+    --quit showing warning after 12 seconds
+    minetest.after(12, function() if trifle.done_warning == false then trifle.quit() end end)
+end
+
+-------------------------------------------------------------
+--
+-- trifle.on_warning_page(formname_fields)
+--
+-- doesn't matter what they actually clicked or did,
+-- just do trifle.quit(), and set trifle.done_warning = true
+-------------------------------------------------------------
+function trifle.on_warning_page(formname, fields)
+    if formname ~= "trifle_core:warning_page" then return end
+    trifle.done_warning = true
+    trifle.quit()
+end
+
+--register on_warning_page()
+minetest.register_on_player_recieve_fields(function(player,formname,fields) 
+    trifle.on_warning_page(formname, fields)
+end)
 
 -------------------------------------------------------------
 --
@@ -371,27 +707,27 @@ trifle.paused = true
 function trifle.globalstep(dtime)
     if not trifle.loaded then return end --No globalstep stuff when we're in the main menu
     
-	timer = dtime + timer
+    timer = dtime + timer
     --assume single player for now
     local player = minetest.get_player_by_name("singleplayer")
     if player then
         local controls = player:get_player_control()
         if controls.jump and not down.jump then
             down.jump = true
-			trifle.current_level.do_life()
+            trifle.current_level.do_life()
         elseif not controls.jump then
             down.jump = false
         end
-		if controls.aux1 and not down.aux1 then
-			down.aux1 = true
-			if not trifle.paused then 
-				trifle.pause()
-			else	
-				trifle.unpause()
-			end
-		elseif not controls.aux1 then
-			down.aux1 = false
-		end
+        if controls.aux1 and not down.aux1 then
+            down.aux1 = true
+            if not trifle.paused then 
+                trifle.pause()
+            else    
+                trifle.unpause()
+            end
+        elseif not controls.aux1 then
+            down.aux1 = false
+        end
     end
     if timer < trifle.current_level.round_time then return end --twice a second
     timer = dtime
@@ -411,7 +747,7 @@ minetest.register_globalstep(function(dtime) trifle.globalstep(dtime) end)
 -- 
 -------------------------------------------------------------
 function trifle.pause()
-	trifle.paused = true
+    trifle.paused = true
 end
 
 -------------------------------------------------------------
@@ -424,8 +760,8 @@ end
 -- 
 -------------------------------------------------------------
 function trifle.unpause()
-	trifle.paused = false
-	timer = 0
+    trifle.paused = false
+    timer = 0
 end
 
 -------------------------------------------------------------
@@ -433,7 +769,12 @@ end
 -- trifle.quit()
 --
 -- Returns back to main menu formspec, by setting trifle.loaded = false
--- and tirfle.paused = true
+-- and trifle.paused = true, this disables globalstep processing
 -- 
 -------------------------------------------------------------
-
+function trifle.quit()
+    trifle.loaded = false
+    trifle.paused = true
+    trifle.clear_map()
+    minetest.show_formspec("singleplayer", "trifle_core:main_menu", trifle.main_menu())
+end

@@ -127,14 +127,14 @@ trifle.current_level = {}
 ----------------------------------------------------------
 function trifle.load_level(setname, level_number)
     local new_level = trifle.levels[setname][level_number].level
-    trifle.current_level = trifle.parse_map(level.map)
+    trifle.current_level = trifle.parse_map(new_level.map)
     
     --Parse the rest of the level settings
     --do_life function override
-    if not level_def.do_life then
+    if not new_level.do_life then
         trifle.current_level.do_life = trifle.do_life
     else
-        trifle.current_level.do_life = level_def.do_life
+        trifle.current_level.do_life = new_level.do_life
     end
     
     trifle.paused = new_level.start_paused
@@ -304,6 +304,7 @@ end
 --
 -------------------------------------------------------------
 function trifle.process_actions()
+	if not trifle.current_level.actions then return end --no actions defined
     local action = trifle.current_level.actions[trifle.current_level.current_action]
     if not action then return end --No more actions defined, or no actions defined
     local delay = action.delay * 1000000 --microseconds

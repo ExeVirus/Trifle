@@ -40,6 +40,8 @@ trifle.add_level("tutorial", "Intro", 1, { --level def
 					"..................................................",
 				},
 		round_time = 0.3,
+		victory = "survive",
+		final_round = 50,
 })
 
 trifle.add_level("tutorial", "Small", 2, {

@@ -2,6 +2,7 @@
 
 trifle.levels = {}
 trifle.levels.num = 0
+trifle.hud = {}
 
 --Utility function for core.lua, performs a deep copy of a table
 --so we don't overwrite values....
@@ -32,6 +33,16 @@ function trifle.onJoinPlayer(player_ref, _)
         sneak_glitch = false,
         new_move = true,        
     })
+	trifle.hud.round = player_ref:hud_add({
+		hud_elem_type = "text",
+		position  = {x = 0.5, y = 0},
+		offset    = {x = 0, y = 30},
+		name 	  = "round", 
+		text      = "1",
+		number 	  = 0x009999,
+		size      = { x = 3, y = 1},
+		alignment = { x = 0, y = 0 },
+	})
     player_ref:set_pos({x=0,y=5,z=0})
     trifle.clear_map()
     minetest.show_formspec(player_ref:get_player_name(), "trifle_core:main_menu", trifle.main_menu())
@@ -124,28 +135,30 @@ trifle.current_level = {}
 --    } --end of level_def description
 ----------------------------------------------------------
 function trifle.load_level(setname, level_number)
-    --Default starting values:
+    local new_level = trifle.levels[setname][level_number].level
+    trifle.current_level.setname          = setname
+    trifle.current_level.level_number     = level_number --used for the following warn and quit call. bad programming right here.
+	
+    --parse the level_def map variables
+    if new_level ~= nil then
+        trifle.current_level = trifle.parse_map(new_level)
+    else trifle.warn_and_quit("No .level specified in level_def.") return end
+	
+	--Default starting values:
     trifle.current_level.setname          = setname
     trifle.current_level.level_number     = level_number
     trifle.current_level.current_action   = 1
     trifle.current_level.last_action_time = 0
     trifle.current_level.current_round    = 1
     
-    local new_level = trifle.levels[setname][level_number].level
-    
-    --parse the level_def map variables
-    if new_level ~= nil then
-        trifle.current_level = trifle.parse_map(new_level)
-    else trifle.warn_and_quit("No .level specified in level_def.") return end
-    
     --victory mode
-    if new_level.victory == nil then trifle.warn_and_quit("No .victory specified in level_def.") return end
+    if new_level.victory == nil then trifle.warn_and_quit("No (or invalid) .victory specified in level_def.") return end
     trifle.current_level.victory = new_level.victory
     if not trifle.set_victory(new_level) then return end
     
     --failure mode
     if new_level.failure ~= nil then 
-        if not trifle.set_failure(level_def) then return false
+        if not trifle.set_failure(level_def) then return false end
     else --not set, so do nothing:
         trifle.current_level.failure_function = function() return end 
     end
@@ -337,6 +350,7 @@ function trifle.do_life()
     trifle.current_level.data = new_data
     trifle.write_map(trifle.current_level)
     trifle.current_level.current_round = trifle.current_level.current_round + 1
+	minetest.get_player_by_name("singleplayer"):hud_change(trifle.hud.round, "text", trifle.current_level.current_round)
     trifle.process_actions()
     trifle.current_level.victory_function() --performs win checks (and sometimes a lose check)
     trifle.current_level.failure_function()
@@ -567,7 +581,7 @@ function trifle.set_failure(level_def)
         
         --set failure_function:
         trifle.current_level.failure_function = trifle.enemy_points_failure_function
-    elseif level_def.failure == "custom" then
+	elseif level_def.failure == "custom" then
         trifle.current_level.failure = "custom"
         
         --check that custom function is valid
@@ -656,33 +670,9 @@ function trifle.warn_and_quit(warning)
         warning,
     }
     minetest.log("warning", table.concat(warn_string))
-    local formspec = {
-        "",
-        table.concat(warn_string),
-    }
-    trifle.done_warning = false
-    minetest.show_formspec("singleplayer", "trifle_core:warning_page", table.concat(formspec))
-    --quit showing warning after 12 seconds
-    minetest.after(12, function() if trifle.done_warning == false then trifle.quit() end end)
+	minetest.chat_send_all(minetest.get_color_escape_sequence("red") .. table.concat(warn_string))
 end
 
--------------------------------------------------------------
---
--- trifle.on_warning_page(formname_fields)
---
--- doesn't matter what they actually clicked or did,
--- just do trifle.quit(), and set trifle.done_warning = true
--------------------------------------------------------------
-function trifle.on_warning_page(formname, fields)
-    if formname ~= "trifle_core:warning_page" then return end
-    trifle.done_warning = true
-    trifle.quit()
-end
-
---register on_warning_page()
-minetest.register_on_player_recieve_fields(function(player,formname,fields) 
-    trifle.on_warning_page(formname, fields)
-end)
 
 -------------------------------------------------------------
 --
@@ -733,7 +723,7 @@ function trifle.globalstep(dtime)
     timer = dtime
     if not trifle.paused then 
         trifle.do_life()
-    end    
+    end
 end
 
 --Actually register the function

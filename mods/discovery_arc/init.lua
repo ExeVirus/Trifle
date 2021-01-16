@@ -1,10 +1,10 @@
------Tutorial------
+-----Discovery Arc-------
 
 
 
-trifle.add_set("Tutorial", "tutorial_icon.png")
+trifle.add_set("Discovery Arc", "discovery_arc_icon.png")
 
-trifle.add_level("Tutorial", "Intro", 2,"tutorial_icon.png", { --level def
+trifle.add_level("Discovery Arc", "Intro", 1,"discovery_arc_icon.png", { --level def
         size_x = 50,
         size_y = 30,
         pos    = {x=-14,y=0,z=-24},
@@ -38,23 +38,6 @@ trifle.add_level("Tutorial", "Intro", 2,"tutorial_icon.png", { --level def
                     "..................................................",
                     "..................................................",
                     "..................................................",
-                },
-        round_time = 0.3,
-        victory = "survive",
-        final_round = 50,
-})
-
-trifle.add_level("Tutorial", "Small", 1,"tutorial_icon.png", {
-        size_x = 7,
-        size_y = 7,
-        pos    = {x=-4,y=0,z=-4},
-        data   = {  "..+....",
-                    "..+....",
-                    "..+....",
-                    ".++....",
-                    "..+....",
-                    "..+....",
-                    "..+....",
                 },
         round_time = 0.3,
         victory = "survive",

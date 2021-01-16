@@ -7,14 +7,15 @@
 -- Pretty straight forward, right?
 -------------------------------------------------------------
 function trifle.add_set(name_of_set, icon_texture_name)
-	if not trifle.levels.name_of_set then
-		trifle.levels[name_of_set] = {}
-		trifle.levels.num = trifle.levels.num+1
-		trifle.levels[trifle.levels.num] = name_of_set
-		trifle.levels[name_of_set].icon = icon_texture_name
-	else
-		minetest.log("Unable to register new trifle game set: "..name_of_set..". It already exists!")
-	end
+    if not trifle.levels.name_of_set then
+        trifle.levels[name_of_set] = {}
+        trifle.levels[name_of_set].num = 0
+        trifle.levels.num = trifle.levels.num+1
+        trifle.levels[trifle.levels.num] = name_of_set
+        trifle.levels[name_of_set].icon = icon_texture_name
+    else
+        minetest.log("Unable to register new trifle game set: "..name_of_set..". It already exists!")
+    end
 end
 
 -------------------------------------------------------------
@@ -23,14 +24,16 @@ end
 --
 -- see core.lua to learn about a level_def
 -------------------------------------------------------------
-function trifle.add_level(name_of_set, name_of_level, level_number, level_def)
-	if not trifle.levels[name_of_set][level_number] then
-		trifle.levels[name_of_set][level_number] = {}
-		trifle.levels[name_of_set][level_number].name = name_of_level
-		trifle.levels[name_of_set][level_number].level = table.copy(level_def)
-	else
-		minetest.log("error", "Unable to register new "..name_of_set.." level number "..level_number..".\nIt already exists!")
-	end
+function trifle.add_level(name_of_set, name_of_level, level_number, icon_texture_name, level_def)
+    if not trifle.levels[name_of_set][level_number] then
+        trifle.levels[name_of_set].num = trifle.levels[name_of_set].num + 1
+        trifle.levels[name_of_set][level_number] = {}
+        trifle.levels[name_of_set][level_number].name = name_of_level
+        trifle.levels[name_of_set][level_number].icon = icon_texture_name
+        trifle.levels[name_of_set][level_number].level = table.copy(level_def)
+    else
+        minetest.log("error", "Unable to register new "..name_of_set.." level number "..level_number..".\nIt already exists!")
+    end
 end
 
 -------------------------------------------------------------

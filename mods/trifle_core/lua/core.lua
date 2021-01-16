@@ -33,16 +33,16 @@ function trifle.onJoinPlayer(player_ref, _)
         sneak_glitch = false,
         new_move = true,        
     })
-	trifle.hud.round = player_ref:hud_add({
-		hud_elem_type = "text",
-		position  = {x = 0.5, y = 0},
-		offset    = {x = 0, y = 30},
-		name 	  = "round", 
-		text      = "1",
-		number 	  = 0x009999,
-		size      = { x = 3, y = 1},
-		alignment = { x = 0, y = 0 },
-	})
+    trifle.hud.round = player_ref:hud_add({
+        hud_elem_type = "text",
+        position  = {x = 0.5, y = 0},
+        offset    = {x = 0, y = 30},
+        name       = "round", 
+        text      = "1",
+        number       = 0x009999,
+        size      = { x = 3, y = 1},
+        alignment = { x = 0, y = 0 },
+    })
     player_ref:set_pos({x=0,y=5,z=0})
     trifle.clear_map()
     minetest.show_formspec(player_ref:get_player_name(), "trifle_core:main_menu", trifle.main_menu())
@@ -138,13 +138,13 @@ function trifle.load_level(setname, level_number)
     local new_level = trifle.levels[setname][level_number].level
     trifle.current_level.setname          = setname
     trifle.current_level.level_number     = level_number --used for the following warn and quit call. bad programming right here.
-	
+    
     --parse the level_def map variables
     if new_level ~= nil then
         trifle.current_level = trifle.parse_map(new_level)
     else trifle.warn_and_quit("No .level specified in level_def.") return end
-	
-	--Default starting values:
+    
+    --Default starting values:
     trifle.current_level.setname          = setname
     trifle.current_level.level_number     = level_number
     trifle.current_level.current_action   = 1
@@ -350,7 +350,7 @@ function trifle.do_life()
     trifle.current_level.data = new_data
     trifle.write_map(trifle.current_level)
     trifle.current_level.current_round = trifle.current_level.current_round + 1
-	minetest.get_player_by_name("singleplayer"):hud_change(trifle.hud.round, "text", trifle.current_level.current_round)
+    minetest.get_player_by_name("singleplayer"):hud_change(trifle.hud.round, "text", trifle.current_level.current_round)
     trifle.process_actions()
     trifle.current_level.victory_function() --performs win checks (and sometimes a lose check)
     trifle.current_level.failure_function()
@@ -581,7 +581,7 @@ function trifle.set_failure(level_def)
         
         --set failure_function:
         trifle.current_level.failure_function = trifle.enemy_points_failure_function
-	elseif level_def.failure == "custom" then
+    elseif level_def.failure == "custom" then
         trifle.current_level.failure = "custom"
         
         --check that custom function is valid
@@ -670,7 +670,7 @@ function trifle.warn_and_quit(warning)
         warning,
     }
     minetest.log("warning", table.concat(warn_string))
-	minetest.chat_send_all(minetest.get_color_escape_sequence("red") .. table.concat(warn_string))
+    minetest.chat_send_all(minetest.get_color_escape_sequence("red") .. table.concat(warn_string))
 end
 
 

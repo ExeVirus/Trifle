@@ -42,4 +42,10 @@ trifle.add_level("Discovery Arc", "Intro", 1,"discovery_arc_icon.png", { --level
         round_time = 0.3,
         victory = "survive",
         final_round = 50,
+        intro = {
+            title   = "Intro",
+            message = "<style color=#0A0>Just another day of survival, like any other. \n\n Good Luck!",
+            ftsize  = 20,
+            bgcolor = "#BBFF",
+        },
 })

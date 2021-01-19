@@ -63,6 +63,52 @@ function trifle.main_menu()
     return table.concat(r);
 end
 
+-----------------Introductory Formspec--------------------------
+--
+-- trifle.intro(intro_def)
+-- intro_def = { 
+--                title   = string
+--                Message = string
+--                ftsize  = integer
+--                bgcolor = ColorString
+--             }
+--
+-- 1. Shows the introductory formspec to the user
+-- 2. Keeps the game unloaded until recieved.
+-------------------------------------------------------------
+function trifle.intro(intro_def)
+    local intro = intro_def
+    
+    --Parse the intro
+    if not intro.title   then trifle.warn_and_quit("No title specified for intro"); return false end
+    local title = intro. title
+    if not intro.message then trifle.warn_and_quit("No message specified for intro"); return false end
+    local message = intro.message
+    local bgcolor = "#FFFA"
+    if intro.bgcolor then bgcolor = intro.bgcolor end
+    local ftsize = 16
+    if intro.ftsize then ftsize = intro.ftsize end
+    
+    --create the formspec
+    local f = {
+        "formspec_version[3]",
+        "size[8,10]",
+        "position[0.5,0.5]",
+        "anchor[0.5,0.5]",
+        "no_prepend[]",
+        "bgcolor["..bgcolor..";both;#333333A0]",
+        "hypertext[0.5,0.2;7,7.8;;",
+        "<global halign=center color=#222 size=32 font=Regular>",title,
+        "<global halign=center color=#000 size="..ftsize.." font=Regular>\n",message,"]",
+        "button_exit[2.5,8.5;3,1;begin;Begin]",
+        "image[6.9,0.1;1,1;"..tostring(trifle.current_level.icon).."]",
+    }
+    
+    --send the formspec
+    minetest.show_formspec("singleplayer", "trifle_core:intro", table.concat(f))
+    return true
+end
+
 ----------------------------------------------------------
 --
 -- trifle.onRecieveFields(player, formname, fields)
@@ -73,9 +119,8 @@ end
 -- Callback for on_recieve fields
 ----------------------------------------------------------
 function trifle.onRecieveFields(player, formname, fields)
-    if formname ~= "trifle_core:main_menu" then
-        return
-    end
+    if formname == "trifle_core:intro" then trifle.loaded = true; return end
+    if formname ~= "trifle_core:main_menu" then return end
     if fields.back then
         trifle.menu_set = nil
         minetest.show_formspec(player:get_player_name(), "trifle_core:main_menu", trifle.main_menu())
@@ -100,3 +145,24 @@ function trifle.onRecieveFields(player, formname, fields)
 end
 
 minetest.register_on_player_receive_fields(function(player, formname, fields) trifle.onRecieveFields(player, formname, fields) end)
+
+----------------------------------------------------------
+--
+-- trifle.load_hud(player)
+--
+-- player: player object 
+-- 
+-- Readies the normal in-game HUD
+----------------------------------------------------------
+function trifle.load_hud(player)
+    trifle.hud.round = player:hud_add({
+        hud_elem_type = "text",
+        position  = {x = 0.5, y = 0},
+        offset    = {x = 0, y = 30},
+        name       = "round", 
+        text      = "1",
+        number       = 0x009999,
+        size      = { x = 3, y = 1},
+        alignment = { x = 0, y = 0 },
+    })
+end

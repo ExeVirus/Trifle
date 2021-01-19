@@ -3,6 +3,7 @@
 trifle.levels = {}
 trifle.levels.num = 0
 trifle.hud = {}
+trifle.paused  = false
 
 --Utility function for core.lua, performs a deep copy of a table
 --so we don't overwrite values....
@@ -25,43 +26,48 @@ end
 -- Sets up player welcome formspec, physics, and position
 ----------------------------------------------------------
 function trifle.onJoinPlayer(player_ref, _)
-    player_ref:set_physics_override({
-        speed = 4,
-        jump  = 0,
-        gravity = 0,
-        sneak = false,
-        sneak_glitch = false,
-        new_move = true,        
-    })
-    trifle.hud.round = player_ref:hud_add({
-        hud_elem_type = "text",
-        position  = {x = 0.5, y = 0},
-        offset    = {x = 0, y = 30},
-        name       = "round", 
-        text      = "1",
-        number       = 0x009999,
-        size      = { x = 3, y = 1},
-        alignment = { x = 0, y = 0 },
-    })
-    player_ref:set_pos({x=0,y=5,z=0})
+    trifle.load_hud(player_ref)
     trifle.clear_map()
+    trifle.ready_physics()
     minetest.show_formspec(player_ref:get_player_name(), "trifle_core:main_menu", trifle.main_menu())
+    trifle.ready_physics()
 end
 
 minetest.register_on_joinplayer(function(player_ref,_) trifle.onJoinPlayer(player_ref,_) end)
 
 trifle.current_level = {}
 
+------------------
+--
+-- function trifle.ready_physics()
+--
+-- For some reason, minetest missing the set_player_physics call a LOT
+--
+-- so we are going to do it multiple times with a function 
+-----------------------
+function trifle.ready_physics()
+    local player = minetest.get_player_by_name("singleplayer")
+    player:set_physics_override({
+        speed = 4,
+        jump  = 0,
+        gravity = 0,
+        sneak = false,
+        sneak_glitch = false,
+        new_move = true,
+    })
+    player:set_velocity({x=0,y=0,z=0})
+    player:set_pos({x=0,y=5,z=0})
+end
 
 ----------------------------------------------------------
 --
 -- trifle.load_level(level_def)
 --
--- level_def  = {
---        size_x= integer, representing the "width"  of the playing board
---        size_y= integer, representing the "height" of the playing board
---        pos   = {x,y,z}, standard minetest position representing the top left corner of the map
---        data  = {
+-- level_def  = { --note things labeled as "REQ" in front are REQUIRED, everything else is OPTIONAL
+--REQ     size_x= integer, representing the "width"  of the playing board
+--REQ     size_y= integer, representing the "height" of the playing board
+--REQ     pos   = {x,y,z}, standard minetest position representing the top left corner of the map
+--REQ     data  = {
 --                  "............",  this table represents the starting map layout,
 --                  "............",  each string is one row (size_x) and there are size_y rows
 --                  "............",  failure to fill out correctly results in an error.
@@ -75,7 +81,7 @@ trifle.current_level = {}
 --
 --        do_life = function(),  Implement your own rulesets for the level!
 --
---        victory = "survive","get_to","destroy","population","custom"
+--REQ     victory = "survive","get_to","destroy","population","custom"
 --
 --            Each of the options for victory represent different win conditions, 
 --            and have variables that must be set inside the level def when used. For example, for "survive",
@@ -109,7 +115,7 @@ trifle.current_level = {}
 --               ---custom vars is the same variable used here as victory_function's custom, so share:)
 --
 --      do_victory = function(),  Implement your own formspec and sounds and stuff for showing the user victory! 
---              --note both do_vicotry and do_failure are found in gui.lua. Not this file
+--              --note both the default trifle.do_vicotry and trifle.do_failure are found in gui.lua. Not this file
 --      do_failure = function(),  Implement your own formspec and sounds and stuff for showing the user defeat!
 --        
 --      pause_mode = "none","limited","toggle_increment","toggle_only","increment_only" --by default, the player may run a round with spacebar and toggle run/stop with "e" (toggle_increment)
@@ -117,15 +123,23 @@ trifle.current_level = {}
 --            toggle_increment: player may both toggle and increment
 --            limited:          player has limited number of pauses, only counts when "pause" happens, not unpause. No incrementing.
 -- 
---      pause_limit = <integer> --see "limited" pause_mode
+--      pause_limit = <integer>, --see "limited" pause_mode above
 --      start_paused = true/false, default true
---      round_time = <float> --in seconds, how low a round lasts in "run" mode
+--      round_time = <float>, --in seconds, how low a round lasts in "run" mode, default 0.5
 --
---      actions={                                              
+--      intro = {                --An intro is an formspec shown to the user when loading up the level
+--                title   = "title",  The title is at the top
+--                message = "message",  And the text below is shown below the title, 
+--                                  keep in mind text can be colored <style color=colorstring> before the text in question.
+--                ftsize  = Message Font size. Title is 32. Default is 16.
+--                bgcolor = "color", --formats are #RGBA, #RGB, #RRGGBB, #RRGGBBAA or "red", "blue", "etc"
+--              },
+--
+--      actions={
 --                  action_def1, --learn more about action_defs in trifle.parse_action() below
 --                  action_def2,
 --                  etc,
---              }
+--              },
 --             Actions will occur in the order they appear, one immediately after another, unless
 --             either a delay=<float> value is set or round=<integer> value is set. These specify when
 --             the next action should occur. delay is always since last action completed, and round will
@@ -136,10 +150,10 @@ trifle.current_level = {}
 ----------------------------------------------------------
 function trifle.load_level(setname, level_number)
     local new_level = trifle.levels[setname][level_number].level
-    trifle.current_level.setname          = setname
-    trifle.current_level.level_number     = level_number --used for the following warn and quit call. bad programming right here.
     
     --parse the level_def map variables
+    trifle.current_level.setname          = setname      -- these two lines only
+    trifle.current_level.level_number     = level_number -- exist for the warn and quit below....
     if new_level ~= nil then
         trifle.current_level = trifle.parse_map(new_level)
     else trifle.warn_and_quit("No .level specified in level_def.") return end
@@ -147,6 +161,7 @@ function trifle.load_level(setname, level_number)
     --Default starting values:
     trifle.current_level.setname          = setname
     trifle.current_level.level_number     = level_number
+    trifle.current_level.icon             = trifle.levels[setname][level_number].icon or trifle.levels[setname].icon 
     trifle.current_level.current_action   = 1
     trifle.current_level.last_action_time = 0
     trifle.current_level.current_round    = 1
@@ -176,8 +191,8 @@ function trifle.load_level(setname, level_number)
     trifle.current_level.do_failure = new_level.do_failure end
     
     --start paused?
-    if new_level.start_paused == nil then trifle.paused = true else -- default true
-    trifle.paused = new_level.start_paused end
+    if new_level.start_paused == nil then trifle.running = false else -- default true
+    trifle.running = new_level.start_paused end
     
     --time for each round
     if new_level.round_time == nil then trifle.current_level.round_time = 0.5 else
@@ -192,10 +207,14 @@ function trifle.load_level(setname, level_number)
     
     --actions table
     if new_level.actions ~= nil then trifle.current_level.actions = new_level.actions end
-    
+    trifle.ready_physics()
     trifle.clear_map()
     trifle.write_map(trifle.current_level)
-    trifle.loaded = true --turn on globalstep
+    if new_level.intro then
+        if trifle.intro(new_level.intro) == false then return end -- do the intro, we'll be loaded after closing that formspec
+    else
+        trifle.loaded = true  -- turn on globalstep now, since there's no intro
+    end
 end
 
 ----------------------------------------------------------
@@ -673,14 +692,13 @@ function trifle.warn_and_quit(warning)
     minetest.chat_send_all(minetest.get_color_escape_sequence("red") .. table.concat(warn_string))
 end
 
-
 -------------------------------------------------------------
 --
 -- trifle.globalstep(dtime)
 --
 -- This is the trifle globalstep function for handling player inputs
--- as well as running do_life at proper intervals (when not paused)
--- 
+-- as well as running do_life at proper intervals (when not paused), and
+-- checking actions to be run that might have time-based requirements
 --
 -- Note the local variable defaults here are required before this 
 -- function is called
@@ -693,9 +711,13 @@ local down = {}
 down.jump = false
 down.aux1 = false
 trifle.loaded = false -- used by main_menu and trifle.quit()
-trifle.paused = true
+trifle.running = false -- start stopped
 function trifle.globalstep(dtime)
-    if not trifle.loaded then return end --No globalstep stuff when we're in the main menu
+    if not trifle.loaded then return end --No other globalstep stuff when we're in the main menu
+    
+    trifle.process_actions(dtime)  -- for time-based actions checks
+    
+    if trifle.paused then return end -- for waiting on formspecs from actions and other such nonsense
     
     timer = dtime + timer
     --assume single player for now
@@ -710,10 +732,10 @@ function trifle.globalstep(dtime)
         end
         if controls.aux1 and not down.aux1 then
             down.aux1 = true
-            if not trifle.paused then 
-                trifle.pause()
+            if trifle.running then 
+                trifle.stop()
             else    
-                trifle.unpause()
+                trifle.run()
             end
         elseif not controls.aux1 then
             down.aux1 = false
@@ -721,7 +743,7 @@ function trifle.globalstep(dtime)
     end
     if timer < trifle.current_level.round_time then return end --twice a second
     timer = dtime
-    if not trifle.paused then 
+    if trifle.running then 
         trifle.do_life()
     end
 end
@@ -731,26 +753,26 @@ minetest.register_globalstep(function(dtime) trifle.globalstep(dtime) end)
 
 -------------------------------------------------------------
 --
--- trifle.pause()
+-- trifle.stop()
 --
 -- Simply pauses any do_life occurances
 -- 
 -------------------------------------------------------------
-function trifle.pause()
-    trifle.paused = true
+function trifle.stop()
+    trifle.running = false
 end
 
 -------------------------------------------------------------
 --
--- trifle.unpause()
+-- trifle.run()
 --
 -- Unpauses do_life occurances (see trifle.globalstep())
 -- Also will reset the counter for the current round so that
 -- the full round time will occur before the next round increments
 -- 
 -------------------------------------------------------------
-function trifle.unpause()
-    trifle.paused = false
+function trifle.run()
+    trifle.running = true
     timer = 0
 end
 

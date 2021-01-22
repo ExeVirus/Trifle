@@ -121,6 +121,7 @@ end
 function trifle.onRecieveFields(player, formname, fields)
     if formname == "trifle_core:intro" then trifle.loaded = true; return end
     if formname ~= "trifle_core:main_menu" then return end
+
     if fields.back then
         trifle.menu_set = nil
         minetest.show_formspec(player:get_player_name(), "trifle_core:main_menu", trifle.main_menu())
@@ -131,15 +132,19 @@ function trifle.onRecieveFields(player, formname, fields)
         if string.sub(name,1,3) == "set" then
             trifle.menu_set = tonumber(string.sub(name,4,-1))
             minetest.show_formspec(player:get_player_name(), "trifle_core:main_menu", trifle.main_menu())
+			return
         elseif string.sub(name,1,5) == "level" then
             if trifle.menu_set ~= nil then
                 trifle.load_level(trifle.levels[trifle.menu_set], tonumber(string.sub(name,6,-1)))
-            else
-                --This should never happen but oh well:
-                minetest.show_formspec(player:get_player_name(), "trifle_core:main_menu", trifle.main_menu())
-            end
+				return
+			end
         end
     end
+	--If after all that, nothing is set, they used escape to quit.
+	if fields.quit then
+	minetest.after(0.05, function() minetest.show_formspec(player:get_player_name(), "trifle_core:main_menu", trifle.main_menu()) end)
+	return
+	end
     --local setname = trifle.levels[trifle.levels.num]
     --trifle.load_level(setname, 1)
 end
@@ -152,17 +157,167 @@ minetest.register_on_player_receive_fields(function(player, formname, fields) tr
 --
 -- player: player object 
 -- 
--- Readies the normal in-game HUD
+-- Readies the normal in-game HUD, which includes:
+--
+-- Messages Panel (left side)
+-- Objectives Panel (right-bottom corner)
+-- Normal item boxes (on bottom)
+-- Level Info Panel (top right)
+-- Current Round Number (top-middle)
+--
 ----------------------------------------------------------
 function trifle.load_hud(player)
+
+-----------------------------
+--Messages Panel (left side)
+-----------------------------
+	trifle.hud.message_image = player:hud_add({
+		hud_elem_type = "image",
+        position  = {x = 0, y = 1},
+		scale     = {x = 9, y = 14},
+        text      = "back.png",
+        alignment = { x = 1, y = -1},
+		offset    = {x = 10, y = -20},
+		z_index = -8,
+	})
+	
+	trifle.hud.message_title = player:hud_add({
+        hud_elem_type = "text",
+        position  = {x = 0, y = 1},
+        offset    = {x = 85, y = -405},
+        name      = "message_title",
+        text      = "Messages",
+        number    = 0x000, --Color
+        size      = { x = 2, y = 2},
+        alignment = { x = 1, y = -1},
+		z_index = -8,
+	})
+	
+	trifle.hud.messages = player:hud_add({
+        hud_elem_type = "text",
+        position  = {x = 0, y = 1},
+		offset    = {x = 40, y = -405},
+        number    = 0x303000, --Color
+        size      = { x = 1, y = 1},
+        alignment = { x = 1, y = 1 },
+        name      = "messages",
+		z_index = -8,
+        text      = [[
+------------Info------------
+ These messages can contain any 
+     information you want
+    But, you are limited to
+   ~4 lines * 34 characters.
+  
+----------Warning-----------
+ You can display warnings as 
+ well, such as this. There 
+ is a more menacing message:
+ -
+ 
+<<<<<ALERT>>>>>
+ This is used for the most
+ important of messages.
+ -
+ -
+]],
+	})
+	
+-----------------------------
+--Objectives Panel (right-bottom corner)
+-----------------------------
+	trifle.hud.message_image = player:hud_add({
+		hud_elem_type = "image",
+        position  = {x = 1, y = 1},
+		scale     = {x = 7, y = 9},
+        text      = "back.png",
+        alignment = { x = -1, y = -1 },
+		offset    = {x = -5, y = -10},
+		z_index = -8,
+		
+	})
+	
+	trifle.hud.message_title = player:hud_add({
+        hud_elem_type = "text",
+        position  = {x = 1, y = 1},
+        offset    = {x = -44, y = -245},
+        name      = "message_title",
+        text      = "Objectives",
+        number    = 0x000, --Color
+        size      = { x = 2, y = 2},
+        alignment = { x = -1, y = -1 },
+		z_index = -8,
+	})
+	
+	trifle.hud.messages = player:hud_add({
+        hud_elem_type = "text",
+        position  = {x = 1, y = 1},
+        offset    = {x = -25, y = -245},
+		number    = 0x005020, --Color
+        size      = { x = 1, y = 1},
+        alignment = { x = -1, y = 1 },
+        name      = "messages",
+		z_index = -8,
+        text      = [[
+1. Survive to Round 50
+
+2. Have at least 20 Life
+at Round 50.
+
+3. Never drop below 10 Life
+]],
+	})
+	
+-----------------------------
+--Normal item boxes (on bottom)
+-----------------------------
+	--Level Info Panel (top right)
+	
+	trifle.hud.level_back = player:hud_add({
+		hud_elem_type = "image",
+        position  = {x = 1, y = 0},
+		scale     = {x = 6, y = 4},
+        text      = "back.png",
+        alignment = { x = -1, y = 1},
+		offset    = { x = -5, y = 5},
+		z_index = -8,
+	})
+	
+	trifle.hud.level_num_name = player:hud_add({
+		hud_elem_type = "text",
+        position  = {x = 1, y = 0},
+        offset    = {x = -100, y = 130},
+        name      = "round",
+        text      = "Level: 1\nName: Intro\nSet: Tutorial",
+        number    = 0x000000, --Color
+        size      = { x = 1, y = 1},
+        alignment = { x = -1, y = -1 },
+		z_index = -8,
+	})
+	
+	trifle.hud.level_back = player:hud_add({
+		hud_elem_type = "image",
+        position  = {x = 1, y = 0},
+		scale     = {x = 2.4, y = 2.4},
+        text      = "tutorial_icon.png",
+        alignment = { x = -1, y = 1},
+		offset    = { x = -11, y = 9.5},
+		z_index = -8,
+	})
+	
+	
+	--Current Round Number (top-middle)
+
+	-- Round Number
     trifle.hud.round = player:hud_add({
         hud_elem_type = "text",
         position  = {x = 0.5, y = 0},
         offset    = {x = 0, y = 30},
-        name       = "round", 
+        name      = "round",
         text      = "1",
-        number       = 0x009999,
+        number    = 0x009999, --Color
         size      = { x = 3, y = 1},
         alignment = { x = 0, y = 0 },
+		z_index = -8,
     })
 end

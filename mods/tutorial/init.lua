@@ -59,4 +59,16 @@ trifle.add_level("Tutorial", "Small", 1,"tutorial_icon.png", {
         round_time = 0.3,
         victory = "survive",
         final_round = 50,
+        do_victory = {
+                title="You suck!",
+                message="because you won!",
+                bgcolor="#FFFFFFA0",
+                ftsize=20,
+            },
+        do_failure = {
+                title="You lost level 1???",
+                message="It doesn't even have a method to lose!",
+                bgcolor="#FF00FFA0",
+                ftsize=15,        
+            },
 })

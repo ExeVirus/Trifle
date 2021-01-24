@@ -115,9 +115,26 @@ end
 --               ---custom vars is the same variable used here as victory_function's custom, so share:)
 --
 --      do_victory = function(),  Implement your own formspec and sounds and stuff for showing the user victory! 
---              --note both the default trifle.do_vicotry and trifle.do_failure are found in gui.lua. Not this file
+--              --note both the default trifle.do_victory and trifle.do_failure are found in gui.lua. Not this file
+--            OR if do_victory is a table, the default show_victory function is used with this text.
+--            do_victory = {
+--                  title   = "title",  The title is at the top
+--                  message = "message",  And the text below is shown below the title, 
+--                                  keep in mind text can be colored <style color=colorstring> before the text in question.
+--                  ftsize  = Message Font size. Title is 32. Default is 16.
+--                  bgcolor = "color", --formats are #RGBA, #RGB, #RRGGBB, #RRGGBBAA or "red", "blue", "etc"
+--                },
+--
 --      do_failure = function(),  Implement your own formspec and sounds and stuff for showing the user defeat!
---        
+--          OR if do_failure is a table, the default failure function is used with this text.
+--            do_failure = {
+--                  title   = "title",  The title is at the top
+--                  message = "message",  And the text below is shown below the title, 
+--                                  keep in mind text can be colored <style color=colorstring> before the text in question.
+--                  ftsize  = Message Font size. Title is 32. Default is 16.
+--                  bgcolor = "color", --formats are #RGBA, #RGB, #RRGGBB, #RRGGBBAA or "red", "blue", "etc"
+--                },
+--
 --      pause_mode = "none","limited","toggle_increment","toggle_only","increment_only" --by default, the player may run a round with spacebar and toggle run/stop with "e" (toggle_increment)
 --            none:             each round happens after 'round_time (see below), the player will typically unpause to start the game
 --            toggle_increment: player may both toggle and increment
@@ -166,6 +183,10 @@ function trifle.load_level(setname, level_number)
     trifle.current_level.last_action_time = 0
     trifle.current_level.current_round    = 1
     
+    --For hud updates:
+    local player = minetest.get_player_by_name("singleplayer")
+    player:hud_change(trifle.hud.round, "text", "1")
+    
     --victory mode
     if new_level.victory == nil then trifle.warn_and_quit("No (or invalid) .victory specified in level_def.") return end
     trifle.current_level.victory = new_level.victory
@@ -183,12 +204,16 @@ function trifle.load_level(setname, level_number)
     trifle.current_level.do_life = new_level.do_life end
     
     --do_victory function override
-    if new_level.do_victory == nil then trifle.current_level.do_victory = trifle.do_victory else
-    trifle.current_level.do_victory = new_level.do_victory end
+    if not new_level.do_victory then trifle.current_level.do_victory = trifle.do_victory()
+    elseif type(new_level.do_victory) == "function" then trifle.current_level.do_victory = new_level.do_victory()
+    elseif type(new_level.do_victory) == "table" then trifle.current_level.do_victory = trifle.do_victory(new_level.do_victory)
+    else trifle.warn_and_quit("No .do_victory is not a function or table") end
     
     --do_failure function override
-    if new_level.do_failure == nil then trifle.current_level.do_failure = trifle.do_failure else
-    trifle.current_level.do_failure = new_level.do_failure end
+    if new_level.do_failure == nil then trifle.current_level.do_failure = trifle.do_failure()
+    elseif type(new_level.do_failure) == "function" then trifle.current_level.do_failure = new_level.do_failure()
+    elseif type(new_level.do_failure) == "table" then trifle.current_level.do_failure = trifle.do_failure(new_level.do_failure)
+    else trifle.warn_and_quit("No .do_failure is not a function or table") end
     
     --start paused?
     if new_level.start_paused == nil then trifle.running = false else -- default true
@@ -371,8 +396,12 @@ function trifle.do_life()
     trifle.current_level.current_round = trifle.current_level.current_round + 1
     minetest.get_player_by_name("singleplayer"):hud_change(trifle.hud.round, "text", trifle.current_level.current_round)
     trifle.process_actions()
-    trifle.current_level.victory_function() --performs win checks (and sometimes a lose check)
-    trifle.current_level.failure_function()
+    if trifle.current_level.victory_function() == true then --performs win checks
+        trifle.current_level.do_victory()
+    end
+    if trifle.current_level.failure_function() == false then
+        trifle.current_level.do_failure()
+    end
 end
 
 -------------------------------------------------------------
